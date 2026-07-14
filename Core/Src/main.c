@@ -36,9 +36,6 @@ int main(void)
 
 	TIM6_Init();
 
-	//start the timer in interrupt mode
-	//HAL_TIM_Base_Start_IT(&htimer6);
-
 	//move CAN peripheral from sleep mode in to initialization mode
 	CAN1_Init();
 
@@ -207,6 +204,36 @@ void CAN1_Init(void)
 
 }
 
+uint8_t led_no = 0;
+
+void CAN1_TX(void)
+{
+
+	CAN_TxHeaderTypeDef TxHeader;
+
+	uint32_t TxMailbox;
+
+	uint8_t message;
+
+	//CAN header configuration
+	TxHeader.DLC = 1; //sending 1byte message
+	TxHeader.StdId = 0x65D;
+	TxHeader.IDE = CAN_ID_STD; //Standard ID
+	TxHeader.RTR = CAN_RTR_DATA; //Data frame
+
+	message = ++led_no;
+
+	if(led_no == 4)
+	{
+		led_no = 0;
+	}
+
+	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
+	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &TxMailbox) != HAL_OK)
+		Error_Handler();
+
+}
+
 void CAN1_Filter_Config(void)
 {
 	CAN_FilterTypeDef can1_filter_init;
@@ -258,7 +285,7 @@ void GPIO_Init(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-
+	CAN1_TX();
 }
 
 void Error_Handler(void)

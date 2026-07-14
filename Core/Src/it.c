@@ -23,6 +23,12 @@ void TIM6_DAC_IRQHandler(void)
 	HAL_TIM_IRQHandler(&htimer6);
 }
 
+void  EXTI0_IRQHandler(void)
+{
+	HAL_TIM_Base_Start_IT(&htimer6);
+	HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0); //generate interrupt when pressing the start button (PA0)
+}
+
 void CAN1_TX_IRQHandler(void)
 {
 	HAL_CAN_IRQHandler(&hcan1);
