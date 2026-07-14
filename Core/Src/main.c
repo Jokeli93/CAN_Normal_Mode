@@ -229,7 +229,7 @@ void CAN1_TX(void)
 	}
 
 	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
-	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &TxMailbox) != HAL_OK)
+	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, &message, &TxMailbox) != HAL_OK)
 		Error_Handler();
 
 }
@@ -274,13 +274,25 @@ void GPIO_Init(void)
 	GPIO_InitTypeDef led_gpio = {0};
 
 	__HAL_RCC_GPIOD_CLK_ENABLE();
+	__HAL_RCC_GPIOA_CLK_ENABLE();
 
+	//LED Pins configuration
 	led_gpio.Mode = GPIO_MODE_OUTPUT_PP;
 	led_gpio.Pull = GPIO_NOPULL;
 	led_gpio.Speed = GPIO_SPEED_FREQ_LOW;
-	led_gpio.Pin = GPIO_PIN_12;
-
+	led_gpio.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
 	HAL_GPIO_Init(GPIOD, &led_gpio);
+
+	//Start button configuration
+	led_gpio.Mode = GPIO_MODE_IT_FALLING; //interrupt generation by pressing the button
+	led_gpio.Pull = GPIO_NOPULL;
+	led_gpio.Speed = GPIO_SPEED_FREQ_LOW;
+	led_gpio.Pin = GPIO_PIN_0;
+	HAL_GPIO_Init(GPIOA, &led_gpio);
+
+	//Enable the IRQ for EXTI0
+	HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
