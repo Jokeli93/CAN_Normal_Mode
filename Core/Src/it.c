@@ -1,0 +1,44 @@
+/*
+ * it.c
+ *
+ *  Created on: Jul 13, 2026
+ *      Author: Joelikane
+ */
+
+
+#include "main.h"
+
+extern TIM_HandleTypeDef htimer6;
+extern CAN_HandleTypeDef hcan1;
+
+
+void SysTick_Handler(void)
+{
+	HAL_IncTick();
+	HAL_SYSTICK_IRQHandler();
+}
+
+void TIM6_DAC_IRQHandler(void)
+{
+	HAL_TIM_IRQHandler(&htimer6);
+}
+
+void CAN1_TX_IRQHandler(void)
+{
+	HAL_CAN_IRQHandler(&hcan1);
+}
+
+void CAN1_RX0_IRQHandler(void)
+{
+	HAL_CAN_IRQHandler(&hcan1);
+}
+
+void CAN1_RX1_IRQHandler(void)
+{
+	HAL_CAN_IRQHandler(&hcan1);
+}
+
+void CAN1_SCE_IRQHandler(void)
+{
+	HAL_CAN_IRQHandler(&hcan1);
+}
