@@ -16,7 +16,6 @@ void TIM6_Init(void);
 void CAN1_Init(void);
 void CAN1_Filter_Config(void);
 void CAN1_TX(void);
-void CAN1_RX(void);
 
 UART_HandleTypeDef huart2;
 CAN_HandleTypeDef hcan1;
@@ -49,10 +48,6 @@ int main(void)
 	//move CAN peripheral from initialization mode in to normal mode
 	if(HAL_CAN_Start(&hcan1) != HAL_OK)
 		Error_Handler();
-
-	//CAN1_TX();
-
-	//CAN1_RX();
 
 	while(1);
 
@@ -179,7 +174,8 @@ void CAN1_Init(void)
 	//Settings related to the CAN controller
 	hcan1.Instance = CAN1;
 	hcan1.Init.Mode = CAN_MODE_NORMAL;
-	hcan1.Init.AutoBusOff = DISABLE;
+	//hcan1.Init.AutoBusOff = DISABLE;
+	hcan1.Init.AutoBusOff = ENABLE;
 	hcan1.Init.AutoRetransmission = ENABLE;
 	hcan1.Init.AutoWakeUp = DISABLE;
 	hcan1.Init.ReceiveFifoLocked = DISABLE;
@@ -189,13 +185,11 @@ void CAN1_Init(void)
 	//Settings related to the CAN bit timings
 	hcan1.Init.Prescaler = 5; // 25 MHz / 5 = 5 MHz CAN-Takt
 	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-	//hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
-	hcan1.Init.TimeSeg1 = CAN_BS1_7TQ;
-	//hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
-	hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
+	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
+	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
 	/*---------------------------------------------------------*/
-	// Total-TQ = 1 (Sync) + 7 (BS1) + 2 (BS2) = 10 TQ
-	// Sample Point = (1 + 7) / 10 = 80% (perfect standard value!)
+	// Total-TQ = 1 (Sync) + 8 (BS1) + 1 (BS2) = 10 TQ
+	// Sample Point = (1 + 8) / 10 = 90% (perfect standard value!)
 	//Baudrate = 5 MHz / 10 TQ = 500 Kbit/s
 
 	//Initialization of CAN1 peripheral
@@ -230,7 +224,12 @@ void CAN1_TX(void)
 
 	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
 	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, &message, &TxMailbox) != HAL_OK)
+	{
+		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 		Error_Handler();
+	}
+
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); //just for observation purpose
 
 }
 
@@ -260,8 +259,8 @@ void CAN1_Filter_Config(void)
 void TIM6_Init(void)
 {
 	htimer6.Instance = TIM6;
-	htimer6.Init.Prescaler = 50000 -1; // 50MHz / 50.000 = 1000Hz takt
-	htimer6.Init.Period = 1000 - 1;   // 1000 Ticks for 1000 HZ = 1 sec.
+	htimer6.Init.Prescaler = 20000 -1; // 50MHz / 20.000 = 2.500Hz => 1 tick every 0.4 msec.
+	htimer6.Init.Period = 2500 - 1;   // 2500 ticks/sec.
 
 	if(HAL_TIM_Base_Init(&htimer6) != HAL_OK)
 	{
@@ -295,9 +294,36 @@ void GPIO_Init(void)
 
 }
 
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	CAN_RxHeaderTypeDef RxHeader;
+	char  msg[50];
+	uint8_t rcvd_msg;
+
+	//Now get the CAN frame from RX_FIFO0
+	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, &rcvd_msg) != HAL_OK)
+		Error_Handler();
+
+	if(RxHeader.StdId == 0x65D)
+
+	sprintf(msg, "Received message: %u\r\n", rcvd_msg);
+	HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15); //for ACK observation purpose
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	CAN1_TX();
+	if(htim->Instance == TIM6)
+	{
+		CAN1_TX();
+		HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+	}
+}
+
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef * hcan)
+{
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 }
 
 void Error_Handler(void)
