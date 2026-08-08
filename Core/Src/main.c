@@ -17,6 +17,9 @@ void CAN1_Init(void);
 void CAN1_Filter_Config(void);
 void CAN1_TX(void);
 
+void LED_Manage_Output(uint8_t led_number);
+void send_response(uint32_t Id);
+
 UART_HandleTypeDef huart2;
 CAN_HandleTypeDef hcan1;
 TIM_HandleTypeDef htimer6;
@@ -225,11 +228,11 @@ void CAN1_TX(void)
 	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
 	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, &message, &TxMailbox) != HAL_OK)
 	{
-		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
+		//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 		Error_Handler();
 	}
 
-	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); //just for observation purpose
+	//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); //just for observation purpose
 
 }
 
@@ -294,36 +297,121 @@ void GPIO_Init(void)
 
 }
 
+CAN_RxHeaderTypeDef RxHeader;
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	CAN_RxHeaderTypeDef RxHeader;
 	char  msg[50];
-	uint8_t rcvd_msg;
+	uint8_t rcvd_msg[8];
 
 	//Now get the CAN frame from RX_FIFO0
-	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, &rcvd_msg) != HAL_OK)
+	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg) != HAL_OK)
 		Error_Handler();
 
-	if(RxHeader.StdId == 0x65D)
+	if(RxHeader.StdId == 0x65D && RxHeader.RTR == 0)
+	{
+		//Data frame sent by N1 to N2
+		LED_Manage_Output(rcvd_msg[0]);
 
-	sprintf(msg, "Received message: %u\r\n", rcvd_msg);
+		sprintf(msg, "N1 message received: %u\r\n", rcvd_msg[0]);
+	}
+	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == 1)
+	{
+		//Remote frame sent by N1 to N2 (request)
+		send_response(RxHeader.StdId);
+		sprintf(msg, "N1 request sent: \r\n");
+
+		return;
+	}
+	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == 0)
+	{
+		//Data frame sent by N2 to N1 (reply)
+		sprintf(msg, "N2 reply received: %u\r\n", rcvd_msg[0] | rcvd_msg[1]);
+	}
+
 	HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-
-	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15); //for ACK observation purpose
 }
+
+void send_response(uint32_t Id)
+{
+
+	CAN_TxHeaderTypeDef TxHeader;
+
+	uint32_t TxMailbox;
+
+	uint8_t message[2] = {0xAB, 0xCD};
+
+	//CAN header configuration
+	TxHeader.DLC = 2; //sending 1byte message
+	TxHeader.StdId = Id;
+	TxHeader.IDE = CAN_ID_STD; //Standard ID
+	TxHeader.RTR = CAN_RTR_DATA; //Data frame
+
+	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
+	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &TxMailbox) != HAL_OK)
+	{
+		//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
+		Error_Handler();
+	}
+
+	//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); //just for observation purpose
+
+}
+
+void LED_Manage_Output(uint8_t led_number)
+{
+	switch (led_number) {
+		case 1:
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+			break;
+
+		case 2:
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+			break;
+
+		case 3:
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+			break;
+
+		case 4:
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
+			break;
+
+		default:
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+			break;
+	}
+}
+
+uint8_t req_counter = 0;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim->Instance == TIM6)
 	{
 		CAN1_TX();
-		HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+		//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13); //for observation purpose
 	}
 }
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef * hcan)
 {
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
+	//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 }
 
 void Error_Handler(void)
