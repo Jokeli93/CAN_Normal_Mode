@@ -19,6 +19,8 @@ void CAN1_TX(void);
 
 void LED_Manage_Output(uint8_t led_number);
 void send_response(uint32_t Id);
+uint8_t req_counter = 0;
+uint8_t led_no = 0;
 
 UART_HandleTypeDef huart2;
 CAN_HandleTypeDef hcan1;
@@ -201,8 +203,6 @@ void CAN1_Init(void)
 
 }
 
-uint8_t led_no = 0;
-
 void CAN1_TX(void)
 {
 
@@ -214,7 +214,7 @@ void CAN1_TX(void)
 
 	//CAN header configuration
 	TxHeader.DLC = 1; //sending 1byte message
-	TxHeader.StdId = 0x65D;
+	TxHeader.StdId = 0x65A;
 	TxHeader.IDE = CAN_ID_STD; //Standard ID
 	TxHeader.RTR = CAN_RTR_DATA; //Data frame
 
@@ -297,10 +297,9 @@ void GPIO_Init(void)
 
 }
 
-CAN_RxHeaderTypeDef RxHeader;
-
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
+	CAN_RxHeaderTypeDef RxHeader;
 	char  msg[50];
 	uint8_t rcvd_msg[8];
 
@@ -311,6 +310,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	if(RxHeader.StdId == 0x65D && RxHeader.RTR == 0)
 	{
 		//Data frame sent by N1 to N2
+
 		LED_Manage_Output(rcvd_msg[0]);
 
 		sprintf(msg, "N1 message received: %u\r\n", rcvd_msg[0]);
@@ -318,15 +318,16 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == 1)
 	{
 		//Remote frame sent by N1 to N2 (request)
+
 		send_response(RxHeader.StdId);
-		sprintf(msg, "N1 request sent: \r\n");
 
 		return;
 	}
 	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == 0)
 	{
 		//Data frame sent by N2 to N1 (reply)
-		sprintf(msg, "N2 reply received: %u\r\n", rcvd_msg[0] | rcvd_msg[1]);
+
+		sprintf(msg, "N2 reply received: %X\r\n", rcvd_msg[0] << 8 | rcvd_msg[1]);
 	}
 
 	HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
@@ -342,7 +343,7 @@ void send_response(uint32_t Id)
 	uint8_t message[2] = {0xAB, 0xCD};
 
 	//CAN header configuration
-	TxHeader.DLC = 2; //sending 1byte message
+	TxHeader.DLC = 2; //sending 2 byte message
 	TxHeader.StdId = Id;
 	TxHeader.IDE = CAN_ID_STD; //Standard ID
 	TxHeader.RTR = CAN_RTR_DATA; //Data frame
@@ -398,15 +399,45 @@ void LED_Manage_Output(uint8_t led_number)
 	}
 }
 
-uint8_t req_counter = 0;
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+	CAN_TxHeaderTypeDef TxHeader;
+
+	uint32_t TxMailbox;
+	char msg[50];
+	uint8_t message = 0;
 	if(htim->Instance == TIM6)
 	{
-		CAN1_TX();
+		if(req_counter == 4)
+		{
+			//N1 sending remote frame to N2 after 4 sec.
+
+			TxHeader.DLC = 2; //sending 2 byte message
+			TxHeader.StdId = 0x65A;
+			TxHeader.IDE = CAN_ID_STD; //Standard ID
+			TxHeader.RTR = CAN_RTR_REMOTE; //Data frame
+
+			//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
+			if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, &message, &TxMailbox) != HAL_OK)
+			{
+				//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
+				Error_Handler();
+			}
+
+			sprintf(msg, "N1 remote frame sent \r\n");
+			HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+
+			req_counter = 0;
+		}
+		else
+		{
+			CAN1_TX();
+			req_counter++;
+		}
 		//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13); //for observation purpose
 	}
+
+
 }
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef * hcan)
