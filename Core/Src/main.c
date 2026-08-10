@@ -52,7 +52,9 @@ int main(void)
 
 	//move CAN peripheral from initialization mode in to normal mode
 	if(HAL_CAN_Start(&hcan1) != HAL_OK)
+	{
 		Error_Handler();
+	}
 
 	while(1);
 
@@ -169,7 +171,6 @@ void UART2_Init(void)
 
 	if(HAL_UART_Init(&huart2) != HAL_OK)
 	{
-		//there is a problem
 		Error_Handler();
 	}
 }
@@ -179,8 +180,8 @@ void CAN1_Init(void)
 	//Settings related to the CAN controller
 	hcan1.Instance = CAN1;
 	hcan1.Init.Mode = CAN_MODE_NORMAL;
-	//hcan1.Init.AutoBusOff = DISABLE;
-	hcan1.Init.AutoBusOff = ENABLE;
+	hcan1.Init.AutoBusOff = DISABLE;
+	//hcan1.Init.AutoBusOff = ENABLE;
 	hcan1.Init.AutoRetransmission = ENABLE;
 	hcan1.Init.AutoWakeUp = DISABLE;
 	hcan1.Init.ReceiveFifoLocked = DISABLE;
@@ -206,7 +207,7 @@ void CAN1_Init(void)
 void CAN1_TX(void)
 {
 
-	CAN_TxHeaderTypeDef TxHeader;
+	CAN_TxHeaderTypeDef TxHeader = {0};
 
 	uint32_t TxMailbox;
 
@@ -214,7 +215,7 @@ void CAN1_TX(void)
 
 	//CAN header configuration
 	TxHeader.DLC = 1; //sending 1byte message
-	TxHeader.StdId = 0x65A;
+	TxHeader.StdId = 0x65D;
 	TxHeader.IDE = CAN_ID_STD; //Standard ID
 	TxHeader.RTR = CAN_RTR_DATA; //Data frame
 
@@ -228,28 +229,27 @@ void CAN1_TX(void)
 	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
 	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, &message, &TxMailbox) != HAL_OK)
 	{
-		//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 		Error_Handler();
 	}
-
-	//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); //just for observation purpose
-
 }
 
 void CAN1_Filter_Config(void)
 {
-	CAN_FilterTypeDef can1_filter_init;
+	CAN_FilterTypeDef can1_filter_init = {0};
 
 	//Settings related to the CAN filter
 	can1_filter_init.FilterActivation = ENABLE;
 	can1_filter_init.FilterBank = 0;
 	can1_filter_init.FilterFIFOAssignment = CAN_RX_FIFO0;
-	can1_filter_init.FilterIdHigh = 0x0000;
+
+	//Mask setting for 0x65A and 0x65D Identifiers
+	can1_filter_init.FilterIdHigh = (0x65D << 5); //(0x658 << 5); //Basic-ID: 0xCB00
 	can1_filter_init.FilterIdLow = 0x0000;
-	can1_filter_init.FilterMaskIdHigh = 0x0000;
+	can1_filter_init.FilterMaskIdHigh = (0x7FF << 5); ///0x7F8 << 5); // Mask: 0xFF00
 	can1_filter_init.FilterMaskIdLow = 0x0000;
 	can1_filter_init.FilterMode = CAN_FILTERMODE_IDMASK;
 	can1_filter_init.FilterScale = CAN_FILTERSCALE_32BIT;
+	can1_filter_init.SlaveStartFilterBank = 14;
 
 	//Filter initialization
 	if(HAL_CAN_ConfigFilter(&hcan1, &can1_filter_init) != HAL_OK)
@@ -299,23 +299,22 @@ void GPIO_Init(void)
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	CAN_RxHeaderTypeDef RxHeader;
+	CAN_RxHeaderTypeDef RxHeader = {0};
 	char  msg[50];
 	uint8_t rcvd_msg[8];
 
 	//Now get the CAN frame from RX_FIFO0
-	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg) != HAL_OK)
+	if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, rcvd_msg) != HAL_OK)
 		Error_Handler();
 
-	if(RxHeader.StdId == 0x65D && RxHeader.RTR == 0)
+	if(RxHeader.StdId == 0x65D && RxHeader.RTR == CAN_RTR_DATA)
 	{
 		//Data frame sent by N1 to N2
-
 		LED_Manage_Output(rcvd_msg[0]);
 
 		sprintf(msg, "N1 message received: %u\r\n", rcvd_msg[0]);
 	}
-	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == 1)
+	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == CAN_RTR_REMOTE)
 	{
 		//Remote frame sent by N1 to N2 (request)
 
@@ -323,7 +322,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 		return;
 	}
-	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == 0)
+	else if(RxHeader.StdId == 0x65A && RxHeader.RTR == CAN_RTR_DATA)
 	{
 		//Data frame sent by N2 to N1 (reply)
 
@@ -336,7 +335,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 void send_response(uint32_t Id)
 {
 
-	CAN_TxHeaderTypeDef TxHeader;
+	CAN_TxHeaderTypeDef TxHeader = {0};
 
 	uint32_t TxMailbox;
 
@@ -351,11 +350,8 @@ void send_response(uint32_t Id)
 	//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
 	if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &TxMailbox) != HAL_OK)
 	{
-		//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 		Error_Handler();
 	}
-
-	//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); //just for observation purpose
 
 }
 
@@ -401,7 +397,7 @@ void LED_Manage_Output(uint8_t led_number)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	CAN_TxHeaderTypeDef TxHeader;
+	CAN_TxHeaderTypeDef TxHeader = {0};
 
 	uint32_t TxMailbox;
 	char msg[50];
@@ -420,7 +416,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			//Add message to the first free Tx mailbox and set the transmission request bit (TXRQ = 1).
 			if(HAL_CAN_AddTxMessage(&hcan1, &TxHeader, &message, &TxMailbox) != HAL_OK)
 			{
-				//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
 				Error_Handler();
 			}
 
@@ -434,7 +429,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			CAN1_TX();
 			req_counter++;
 		}
-		//HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13); //for observation purpose
 	}
 
 
@@ -442,10 +436,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef * hcan)
 {
-	//HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation purpose
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET); //for observation
 }
 
 void Error_Handler(void)
 {
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
 	while(1);
 }
