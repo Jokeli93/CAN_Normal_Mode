@@ -180,23 +180,39 @@ void CAN1_Init(void)
 	//Settings related to the CAN controller
 	hcan1.Instance = CAN1;
 	hcan1.Init.Mode = CAN_MODE_NORMAL;
-	hcan1.Init.AutoBusOff = DISABLE;
-	//hcan1.Init.AutoBusOff = ENABLE;
+	hcan1.Init.AutoBusOff = ENABLE;
 	hcan1.Init.AutoRetransmission = ENABLE;
 	hcan1.Init.AutoWakeUp = DISABLE;
 	hcan1.Init.ReceiveFifoLocked = DISABLE;
 	hcan1.Init.TimeTriggeredMode = DISABLE;
 	hcan1.Init.TransmitFifoPriority = DISABLE;
 
-	//Settings related to the CAN bit timings
+	//Settings related to the CAN bit timings (please choose the best baudrate for stability)
+
+/*
+	hcan1.Init.Prescaler = 10; // 25 MHz / 10 = 2.5 MHz CAN-Takt
+	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
+	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+	//Baudrate = 2.5 MHz / 10 TQ = 500 Kbit/s
+*/
+
+	hcan1.Init.Prescaler = 20; // 25 MHz / 20 = 1.25 MHz CAN-Takt
+	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
+	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+	//Baudrate = 1.25 MHz / 10 TQ = 125 Kbit/s
+
+/*
 	hcan1.Init.Prescaler = 5; // 25 MHz / 5 = 5 MHz CAN-Takt
 	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
 	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
 	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
-	/*---------------------------------------------------------*/
+	---------------------------------------------------------
 	// Total-TQ = 1 (Sync) + 8 (BS1) + 1 (BS2) = 10 TQ
 	// Sample Point = (1 + 8) / 10 = 90% (perfect standard value!)
 	//Baudrate = 5 MHz / 10 TQ = 500 Kbit/s
+*/
 
 	//Initialization of CAN1 peripheral
 	if(HAL_CAN_Init(&hcan1) != HAL_OK)
